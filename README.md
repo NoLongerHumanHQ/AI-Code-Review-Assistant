@@ -19,26 +19,41 @@ graph TB
     
     H -->|OpenAI| I[OpenAI API<br/>GPT Models]
     H -->|Anthropic| J[Anthropic API<br/>Claude Models]
+    H -->|Ollama| K[Ollama API<br/>Local Models]
+    H -->|Google Gemini| L[Gemini API<br/>Gemini Models]
+    H -->|Groq| M[Groq API<br/>Fast Inference]
+    H -->|Hugging Face| N[Hugging Face<br/>Inference API]
+    H -->|OpenRouter| O[OpenRouter API<br/>Multiple Models]
     
-    I --> K[Response Parser]
-    J --> K
+    I --> P[Response Parser]
+    J --> P
+    K --> P
+    L --> P
+    M --> P
+    N --> P
+    O --> P
     
-    K --> L[Result Formatter]
-    L --> M[Review Display]
-    L --> N[JSON Report Generator]
+    P --> Q[Result Formatter]
+    Q --> R[Review Display]
+    Q --> S[JSON Report Generator]
     
-    M --> O[Code Quality Rating]
-    M --> P[Issue Categorization]
-    M --> Q[Recommendations]
+    R --> T[Code Quality Rating]
+    R --> U[Issue Categorization]
+    R --> V[Recommendations]
     
-    N --> R[Download Report]
+    S --> W[Download Report]
     
     style A fill:#e1f5fe
     style I fill:#fff3e0
     style J fill:#f3e5f5
-    style O fill:#e8f5e8
-    style P fill:#fff8e1
-    style Q fill:#fce4ec
+    style K fill:#e8f5e8
+    style L fill:#e0f7fa
+    style M fill:#f1f8e9
+    style N fill:#fff8e1
+    style O fill:#fce4ec
+    style T fill:#e8f5e8
+    style U fill:#fff8e1
+    style V fill:#fce4ec
 ```
 
 ### Component Description
@@ -47,7 +62,14 @@ graph TB
 - **Code Input Handler**: Manages both direct text input and file uploads
 - **Language Detector**: Automatically identifies programming language
 - **Code Preprocessor**: Prepares code for analysis and handles formatting
-- **AI Provider Integration**: Supports both OpenAI and Anthropic APIs
+- **AI Provider Integration**: Supports multiple AI providers including free and paid options
+  - OpenAI API (GPT models)
+  - Anthropic API (Claude models)
+  - Ollama API (Local, completely free)
+  - Google Gemini API (Free tier available)
+  - Groq API (Fast inference, free tier available)
+  - Hugging Face Inference API (Free tier available)
+  - OpenRouter API (Access to multiple models with competitive pricing)
 - **Response Parser**: Processes AI responses into structured data
 - **Result Formatter**: Organizes results into user-friendly format
 - **Report Generator**: Creates downloadable JSON reports
@@ -66,8 +88,17 @@ graph TB
   - Style and best practice recommendations
 
 - **Customizable Analysis**
-  - Support for both OpenAI and Anthropic APIs
+  - Support for multiple AI providers:
+    - OpenAI (GPT models)
+    - Anthropic (Claude models)
+    - Ollama (Local, completely free)
+    - Google Gemini (Free tier available)
+    - Groq (Fast inference, free tier available)
+    - Hugging Face (Free tier available)
+    - OpenRouter (Multiple models, competitive pricing)
   - Multiple model options for each provider
+  - Free tier indicators for applicable providers
+  - Provider status monitoring
   - Adjustable review depth (Basic, Standard, Comprehensive)
 
 - **User-Friendly Output**
@@ -91,7 +122,16 @@ graph TB
 
 3. Set up your environment variables:
    - Create a `.env` file based on the provided `.env.example`
-   - Add your OpenAI and/or Anthropic API keys
+   - Add your API keys for the providers you want to use:
+     ```
+     OPENAI_API_KEY=your_openai_key
+     ANTHROPIC_API_KEY=your_anthropic_key
+     GEMINI_API_KEY=your_gemini_key
+     GROQ_API_KEY=your_groq_key
+     HUGGINGFACE_API_KEY=your_huggingface_key
+     OPENROUTER_API_KEY=your_openrouter_key
+     OLLAMA_BASE_URL=http://localhost:11434
+     ```
 
 ## Usage
 
@@ -103,9 +143,10 @@ graph TB
 2. Open your web browser and navigate to the URL displayed in the terminal (typically http://localhost:8501)
 
 3. Configure your settings in the sidebar:
-   - Select API provider (OpenAI or Anthropic)
-   - Enter your API key if not already set in .env
-   - Select the AI model
+   - Select API provider (OpenAI, Anthropic, Ollama, Google Gemini, Groq, Hugging Face, or OpenRouter)
+   - Enter your API key if not already set in .env (not required for Ollama)
+   - Select the AI model from the available options for your chosen provider
+   - View provider status and setup instructions if needed
    - Choose review depth
 
 4. Input your code:
@@ -152,6 +193,26 @@ The application supports detection and review of multiple programming languages,
 - **Anthropic**: Uses Claude models for code review
   - Models: claude-2, claude-instant-1, claude-3-opus, claude-3-sonnet
 
+- **Ollama** 🆓: Uses local models for completely free code review
+  - Models: codellama, deepseek-coder, starcoder, and other locally installed models
+  - Requires Ollama to be installed and running locally
+  
+- **Google Gemini** 🆓: Uses Google's Gemini models with free tier
+  - Models: gemini-1.5-flash, gemini-1.5-pro
+  - Free tier with rate limits (15 requests per minute)
+  
+- **Groq** 🆓: Uses fast inference models with free tier
+  - Models: llama3-70b-8192, mixtral-8x7b-32768
+  - Optimized for speed and performance
+  
+- **Hugging Face** 🆓: Uses Inference API with free tier
+  - Models: microsoft/DialoGPT-medium, codeparrot/codeparrot
+  - Free tier with rate limits
+  
+- **OpenRouter**: Access to multiple models through a single API
+  - Models: anthropic/claude-3-haiku, meta-llama/llama-3-8b, and many more
+  - Cost-effective pricing with model selection
+
 ### Review Depth
 - **Basic**: Quick review focusing on critical issues
 - **Standard**: Balanced review covering bugs, style, and common best practices
@@ -187,10 +248,30 @@ If you encounter any issues or have questions, please:
 ## Acknowledgements
 
 - This project uses the [Streamlit](https://streamlit.io/) framework
-- AI-powered code analysis provided by [OpenAI](https://openai.com/) and [Anthropic](https://www.anthropic.com/)
+- AI-powered code analysis provided by:
+  - [OpenAI](https://openai.com/) (GPT models)
+  - [Anthropic](https://www.anthropic.com/) (Claude models)
+  - [Ollama](https://ollama.ai/) (Local models)
+  - [Google Gemini](https://ai.google.dev/) (Gemini models)
+  - [Groq](https://groq.com/) (Fast inference models)
+  - [Hugging Face](https://huggingface.co/) (Inference API)
+  - [OpenRouter](https://openrouter.ai/) (Multiple model access)
 - Special thanks to the open-source community for their valuable contributions
 
 ## Changelog
+
+### Version 2.0.0
+- Added support for multiple free and affordable API providers:
+  - Ollama (Local, completely free)
+  - Google Gemini API (Free tier available)
+  - Groq API (Fast inference, free tier available)
+  - Hugging Face Inference API (Free tier available)
+  - OpenRouter API (Multiple models, competitive pricing)
+- Enhanced UI with provider status indicators
+- Added free tier indicators for applicable providers
+- Improved error handling and setup instructions
+- Optimized prompts for each provider
+- Updated documentation
 
 ### Version 1.0.0
 - Initial release with basic code review functionality

@@ -7,6 +7,23 @@ from dotenv import load_dotenv
 import time
 import re
 
+# Import utility modules
+from utils.config import (
+    get_available_providers, 
+    get_models_for_provider, 
+    has_free_tier, 
+    get_setup_instructions,
+    validate_api_key
+)
+from utils.prompts import create_review_prompt
+
+# Import provider modules
+from providers.ollama_provider import analyze_with_ollama, is_ollama_running
+from providers.gemini_provider import analyze_with_gemini, is_gemini_available
+from providers.groq_provider import analyze_with_groq, is_groq_available
+from providers.huggingface_provider import analyze_with_huggingface, is_huggingface_available
+from providers.openrouter_provider import analyze_with_openrouter, is_openrouter_available, get_model_pricing
+
 # Load environment variables
 load_dotenv()
 
@@ -54,6 +71,24 @@ st.markdown("""
         padding: 10px;
         border-left: 3px solid #ccc;
     }
+    .free-tier-badge {
+        background-color: #5cb85c;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.8em;
+        margin-left: 5px;
+    }
+    .provider-status {
+        font-size: 0.9em;
+        margin-top: 5px;
+    }
+    .status-available {
+        color: #5cb85c;
+    }
+    .status-unavailable {
+        color: #ff4b4b;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -66,30 +101,77 @@ with st.sidebar:
     st.header("Settings")
     
     # API Provider selection
-    api_provider = st.selectbox(
+    available_providers = ["OpenAI", "Anthropic", "Ollama", "Google Gemini", "Groq", "Hugging Face", "OpenRouter"]
+    
+    # Check provider availability
+    provider_status = {
+        "OpenAI": validate_api_key("OpenAI"),
+        "Anthropic": validate_api_key("Anthropic"),
+        "Ollama": is_ollama_running(),
+        "Google Gemini": is_gemini_available(),
+        "Groq": is_groq_available(),
+        "Hugging Face": is_huggingface_available(),
+        "OpenRouter": is_openrouter_available()
+    }
+    
+    # Add free tier indicators to provider names
+    provider_display_names = []
+    for provider in available_providers:
+        if has_free_tier(provider):
+            provider_display_names.append(f"{provider} 🆓")
+        else:
+            provider_display_names.append(provider)
+    
+    # Provider selection with free tier indicators
+    selected_provider_index = st.selectbox(
         "Select API Provider",
-        ["OpenAI", "Anthropic"]
+        range(len(provider_display_names)),
+        format_func=lambda i: provider_display_names[i]
     )
     
-    # API Key input
-    api_key = st.text_input(
-        "API Key",
-        type="password",
-        value=os.getenv("OPENAI_API_KEY") if api_provider == "OpenAI" else os.getenv("ANTHROPIC_API_KEY"),
-        help="Enter your API key for the selected provider"
-    )
+    api_provider = available_providers[selected_provider_index]
+    
+    # Show provider status
+    if provider_status[api_provider]:
+        st.markdown(f"<div class='provider-status status-available'>✅ {api_provider} is available</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='provider-status status-unavailable'>❌ {api_provider} is not available</div>", unsafe_allow_html=True)
+        with st.expander("Setup Instructions"):
+            st.markdown(get_setup_instructions(api_provider))
+    
+    # API Key input (not needed for Ollama)
+    if api_provider != "Ollama":
+        api_key_env_var = f"{api_provider.upper().replace(' ', '_')}_API_KEY"
+        if api_provider == "Google Gemini":
+            api_key_env_var = "GEMINI_API_KEY"
+            
+        api_key = st.text_input(
+            "API Key",
+            type="password",
+            value=os.getenv(api_key_env_var, ""),
+            help=f"Enter your API key for {api_provider}"
+        )
+    else:
+        api_key = None  # No API key needed for Ollama
+        # Show Ollama status
+        if is_ollama_running():
+            st.success("Ollama is running locally")
+        else:
+            st.error("Ollama is not running")
+            with st.expander("Ollama Setup Instructions"):
+                st.markdown(get_setup_instructions("Ollama"))
     
     # Model selection based on provider
-    if api_provider == "OpenAI":
-        model = st.selectbox(
-            "Select Model",
-            ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
-        )
-    else:  # Anthropic
-        model = st.selectbox(
-            "Select Model",
-            ["claude-2", "claude-instant-1", "claude-3-opus", "claude-3-sonnet"]
-        )
+    models = get_models_for_provider(api_provider)
+    model = st.selectbox(
+        "Select Model",
+        models
+    )
+    
+    # Show pricing for OpenRouter models
+    if api_provider == "OpenRouter" and is_openrouter_available():
+        pricing_info = get_model_pricing(model)
+        st.info(f"Pricing: {pricing_info}")
     
     # Review depth
     review_depth = st.select_slider(
@@ -111,6 +193,7 @@ with st.sidebar:
     - Security vulnerability checks
     - Performance optimization tips
     - Style and best practice recommendations
+    - Multiple AI providers (free & paid options)
     """)
 
 
@@ -160,71 +243,13 @@ def detect_language(code, filename=None):
     return "Unknown"
 
 
-# Function to create the AI prompt for code review
-def create_review_prompt(code, language, depth):
-    depth_instructions = {
-        "Basic": "Focus on critical bugs and major issues only. Keep the review brief.",
-        "Standard": "Cover bugs, style issues, and common best practices. Provide a balanced review.",
-        "Comprehensive": "Perform a thorough analysis including edge cases, optimizations, security concerns, and detailed best practices. Provide in-depth feedback."
-    }
-    
-    prompt = f"""
-    You are an expert code reviewer specializing in {language} programming. Please review the following code and provide detailed feedback.
-
-    {depth_instructions[depth]}
-
-    Analyze the code for:
-    1. Bugs and logical errors
-    2. Security vulnerabilities
-    3. Performance issues and optimization opportunities
-    4. Adherence to {language} best practices and coding standards
-    5. Code readability and maintainability issues
-
-    For each issue found:
-    - Specify the line number(s) when possible
-    - Categorize the severity (Critical, High, Medium, Low)
-    - Explain why it's an issue
-    - Provide a specific code example showing how to improve it
-
-    Also include:
-    - An overall code quality rating (1-10)
-    - A summary of the main strengths and weaknesses
-    - 2-3 key recommendations for improvement
-
-    Format your response as JSON with the following structure:
-    {{
-        "overall_rating": number,
-        "summary": {{
-            "strengths": [list of strings],
-            "weaknesses": [list of strings]
-        }},
-        "key_recommendations": [list of strings],
-        "issues": [
-            {{
-                "line": number or range (e.g., "10" or "10-15"),
-                "severity": "Critical|High|Medium|Low",
-                "description": "string",
-                "recommendation": "string",
-                "improved_code": "string"
-            }}
-        ]
-    }}
-
-    Here is the code to review:
-    ```{language}
-    {code}
-    ```
-    """
-    return prompt
-
-
 # Function to call OpenAI API for code review
 def analyze_with_openai(code, language, api_key, model, depth):
     if not api_key:
         st.error("Please provide an OpenAI API key in the sidebar.")
         return None
     
-    prompt = create_review_prompt(code, language, depth)
+    prompt = create_review_prompt(code, language, depth, "OpenAI")
     
     headers = {
         "Content-Type": "application/json",
@@ -275,7 +300,7 @@ def analyze_with_anthropic(code, language, api_key, model, depth):
         st.error("Please provide an Anthropic API key in the sidebar.")
         return None
     
-    prompt = create_review_prompt(code, language, depth)
+    prompt = create_review_prompt(code, language, depth, "Anthropic")
     
     headers = {
         "Content-Type": "application/json",
@@ -325,13 +350,45 @@ def analyze_with_anthropic(code, language, api_key, model, depth):
 def analyze_code(code, language, api_key, provider, model, depth):
     if provider == "OpenAI":
         return analyze_with_openai(code, language, api_key, model, depth)
-    else:  # Anthropic
+    elif provider == "Anthropic":
         return analyze_with_anthropic(code, language, api_key, model, depth)
+    elif provider == "Ollama":
+        prompt = create_review_prompt(code, language, depth, "Ollama")
+        return analyze_with_ollama(code, language, model, prompt)
+    elif provider == "Google Gemini":
+        prompt = create_review_prompt(code, language, depth, "Google Gemini")
+        return analyze_with_gemini(code, language, model, prompt)
+    elif provider == "Groq":
+        prompt = create_review_prompt(code, language, depth, "Groq")
+        return analyze_with_groq(code, language, model, prompt)
+    elif provider == "Hugging Face":
+        prompt = create_review_prompt(code, language, depth, "Hugging Face")
+        return analyze_with_huggingface(code, language, model, prompt)
+    elif provider == "OpenRouter":
+        prompt = create_review_prompt(code, language, depth, "OpenRouter", model)
+        return analyze_with_openrouter(code, language, model, prompt)
+    else:
+        st.error(f"Unsupported provider: {provider}")
+        return None
 
 
 # Function to format and display review output
 def display_review_output(review_data):
     if not review_data:
+        return
+    
+    # Check if there's an error in the response
+    if "error" in review_data:
+        st.error(f"Error: {review_data['error']}")
+        if "setup_instructions" in review_data:
+            with st.expander("Setup Instructions"):
+                st.markdown(review_data["setup_instructions"])
+        if "details" in review_data:
+            with st.expander("Error Details"):
+                st.markdown(review_data["details"])
+        if "raw_response" in review_data:
+            with st.expander("Raw Response"):
+                st.code(review_data["raw_response"])
         return
     
     # Display overall rating
@@ -403,7 +460,7 @@ def display_review_output(review_data):
         severity = issue.get("severity", "Low")
         severity_class = f"severity-{severity.lower()}"
         
-        with st.expander(f"Issue #{i}: {issue.get('description', 'Unnamed Issue')} (Line {issue.get('line', 'N/A')})"):
+        with st.expander(f"Issue #{i}: {issue.get('description', 'Unnamed Issue')} (Line {issue.get('line', 'N/A')})"): 
             st.markdown(f"<span class='{severity_class}'>Severity: {severity}</span>", unsafe_allow_html=True)
             st.markdown(f"**Line(s):** {issue.get('line', 'N/A')}")
             st.markdown(f"**Description:** {issue.get('description', 'No description provided.')}")
@@ -492,18 +549,19 @@ with tab2:
                     display_review_output(review_result)
                     
                     # Download report option
-                    report_json = json.dumps(review_result, indent=2)
-                    st.download_button(
-                        label="Download Report (JSON)",
-                        data=report_json,
-                        file_name=f"code_review_{uploaded_file.name}.json",
-                        mime="application/json"
-                    )
+                    if "error" not in review_result:
+                        report_json = json.dumps(review_result, indent=2)
+                        st.download_button(
+                            label="Download Report (JSON)",
+                            data=report_json,
+                            file_name=f"code_review_{uploaded_file.name}.json",
+                            mime="application/json"
+                        )
 
 # Footer
 st.divider()
 st.markdown("""
 <div style="text-align: center; color: #888;">
-    AI Code Review Assistant | Built with Streamlit
+    AI Code Review Assistant | Built with Streamlit | Supports multiple AI providers
 </div>
 """, unsafe_allow_html=True)
